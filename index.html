@@ -24,12 +24,6 @@
             <button class="btn" id="btn-config">⚙ Configure Controls</button>
             <button class="btn" id="btn-toggle-model" style="background: #255">✈ View: Visual Model</button>
         </div>
-        <div style="margin-top: 10px;">
-            <label for="input-source-select" style="font-size: 12px; color: #ccc;">Input Source:</label>
-            <select id="input-source-select" class="btn" style="background: #333; color: white; border: 1px solid #555; padding: 2px 5px; width: 180px;">
-                <option value="keyboard">Keyboard</option>
-            </select>
-        </div>
 
         <div class="hud-stats">
             <span id="status" style="color:yellow">Waiting for input...</span><br>
@@ -45,6 +39,14 @@
         <div class="panel">
             <!-- Col 1: Mapping -->
             <div class="column">
+                <!-- Input Source Dropdown moved here -->
+                <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #555;">
+                    <label for="input-source-select" style="display: block; font-size: 12px; color: #ccc; margin-bottom: 5px;">Active Input Device:</label>
+                    <select id="input-source-select" class="btn" style="background: #111; color: white; border: 1px solid #666; padding: 8px; width: 100%; box-sizing: border-box;">
+                        <option value="keyboard">Keyboard</option>
+                    </select>
+                </div>
+
                 <h3>1. Channel Map</h3>
                 <div id="mapping-container"></div>
                 <br>
