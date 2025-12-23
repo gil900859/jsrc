@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RC Flight Simulator MVP</title>
+    <link rel="stylesheet" href="src/style.css">
+    
+    <!-- Three.js Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- HUD -->
+    <div id="hud">
+        <div style="display: flex; gap: 10px;">
+            <button class="btn" id="btn-config">⚙ Configure Controls</button>
+            <button class="btn" id="btn-toggle-model" style="background: #255">✈ View: Visual Model</button>
+        </div>
+        <div class="hud-stats">
+            <span id="status" style="color:yellow">Waiting for input...</span><br>
+            R: <span id="d-roll" class="debug-val">0.0</span> 
+            P: <span id="d-pitch" class="debug-val">0.0</span><br>
+            Y: <span id="d-yaw" class="debug-val">0.0</span> 
+            T: <span id="d-thr" class="debug-val">0.0</span>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal">
+        <div class="panel">
+            <!-- Col 1: Mapping -->
+            <div class="column">
+                <h3>1. Channel Map</h3>
+                <div id="mapping-container"></div>
+                <br>
+                <button class="btn" id="btn-reset" style="background:#522">Reset Defaults</button>
+                <button class="btn" id="btn-close" style="float:right">Close & Save</button>
+            </div>
+
+            <!-- Col 2: Calibration -->
+            <div class="column">
+                <h3>2. Calibration</h3>
+                <button class="btn" id="btn-calibrate" style="width:100%">Start Calibration</button>
+                <div id="cal-status">Loaded.</div>
+                
+                <!-- Visualizer -->
+                <div class="visualizer-row">
+                    <div class="stick-box"><div id="v-dot-left" class="stick-dot"></div></div>
+                    <div class="stick-box"><div id="v-dot-right" class="stick-dot"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
