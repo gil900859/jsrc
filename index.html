@@ -1,3 +1,4 @@
+<!-- dev/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,6 +24,13 @@
             <button class="btn" id="btn-config">⚙ Configure Controls</button>
             <button class="btn" id="btn-toggle-model" style="background: #255">✈ View: Visual Model</button>
         </div>
+        <div style="margin-top: 10px;">
+            <label for="input-source-select" style="font-size: 12px; color: #ccc;">Input Source:</label>
+            <select id="input-source-select" class="btn" style="background: #333; color: white; border: 1px solid #555; padding: 2px 5px; width: 180px;">
+                <option value="keyboard">Keyboard</option>
+            </select>
+        </div>
+
         <div class="hud-stats">
             <span id="status" style="color:yellow">Waiting for input...</span><br>
             R: <span id="d-roll" class="debug-val">0.0</span> 

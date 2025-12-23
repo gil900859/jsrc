@@ -1,3 +1,4 @@
+// dev/src/core/UIManager.js
 export class UIManager {
     constructor(inputSystem, aircraft) {
         this.inputSystem = inputSystem;
@@ -10,8 +11,10 @@ export class UIManager {
         this.btnToggleModel = document.getElementById('btn-toggle-model');
         this.calStatus = document.getElementById('cal-status');
         this.statusText = document.getElementById('status');
+        this.inputSourceSelect = document.getElementById('input-source-select');
         
         this.initEvents();
+        this.updateGamepadList();
     }
 
     initEvents() {
@@ -40,13 +43,51 @@ export class UIManager {
 
         this.btnCalibrate.onclick = () => this.toggleCalibration();
 
-        window.addEventListener("gamepadconnected", (e) => {
-            this.statusText.innerText = "Gamepad: " + e.gamepad.id.substring(0, 15) + "...";
-            this.statusText.style.color = "#0f0";
-        });
+        this.inputSourceSelect.onchange = (e) => {
+            this.inputSystem.config.inputSource = e.target.value;
+            this.inputSystem.updateGpIndex();
+            this.inputSystem.save();
+            this.buildMappingUI(); // Refresh UI visibility
+        };
+
+        window.addEventListener("gamepadconnected", () => this.updateGamepadList());
+        window.addEventListener("gamepaddisconnected", () => this.updateGamepadList());
+    }
+
+    updateGamepadList() {
+        const currentSource = this.inputSystem.config.inputSource;
+        
+        // Clear and add Keyboard at top
+        this.inputSourceSelect.innerHTML = `<option value="keyboard">Keyboard</option>`;
+        
+        const gps = navigator.getGamepads();
+        let connectedCount = 0;
+
+        for (let i = 0; i < gps.length; i++) {
+            if (gps[i]) {
+                const opt = document.createElement('option');
+                opt.value = `gp-${i}`;
+                opt.innerText = `Gamepad ${i}: ${gps[i].id.substring(0, 20)}...`;
+                this.inputSourceSelect.appendChild(opt);
+                connectedCount++;
+            }
+        }
+
+        this.inputSourceSelect.value = currentSource;
+
+        if (currentSource === 'keyboard') {
+            this.statusText.innerText = "Input: Keyboard";
+            this.statusText.style.color = "#0af";
+        } else {
+            const gp = navigator.getGamepads()[this.inputSystem.gpIndex];
+            this.statusText.innerText = gp ? "Input: " + gp.id.substring(0, 15) + "..." : "Gamepad Disconnected";
+            this.statusText.style.color = gp ? "#0f0" : "#f00";
+        }
     }
 
     toggleCalibration() {
+        if (this.inputSystem.config.inputSource === 'keyboard') return;
+
         if(!this.inputSystem.isCalibrating) {
             this.inputSystem.startCalibration();
             this.btnCalibrate.innerText = "STOP & SAVE";
@@ -64,6 +105,27 @@ export class UIManager {
 
     buildMappingUI() {
         this.mappingContainer.innerHTML = '';
+        
+        const isKeyboard = this.inputSystem.config.inputSource === 'keyboard';
+        
+        if (isKeyboard) {
+            this.mappingContainer.innerHTML = `
+                <div style="color: #aaa; font-size: 0.9em; line-height: 1.6em;">
+                    <strong>Keyboard Controls:</strong><br>
+                    • Right Stick: Arrow Keys<br>
+                    • Rudder: [ and ] keys<br>
+                    • Throttle: 1-9 keys<br>
+                    <p style="color: #666; font-style: italic;">Channel mapping is only available for Gamepads.</p>
+                </div>
+            `;
+            this.btnCalibrate.disabled = true;
+            this.btnCalibrate.style.opacity = 0.5;
+            return;
+        }
+
+        this.btnCalibrate.disabled = false;
+        this.btnCalibrate.style.opacity = 1.0;
+
         ['roll', 'pitch', 'yaw', 'throttle'].forEach(key => {
             const map = this.inputSystem.config.mappings[key];
             const row = document.createElement('div');
@@ -105,10 +167,11 @@ export class UIManager {
                 const el = document.getElementById(`ui-val-${key}`);
                 if(el) el.innerText = this.inputSystem.getValue(key).toFixed(2);
             });
-
-            this.moveDot('v-dot-left', yaw, throttle);
-            this.moveDot('v-dot-right', roll, pitch);
         }
+        
+        // Always update dots if visualizer elements exist
+        this.moveDot('v-dot-left', yaw, throttle);
+        this.moveDot('v-dot-right', roll, pitch);
     }
 
     moveDot(id, x, y) {
