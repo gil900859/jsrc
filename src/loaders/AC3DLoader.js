@@ -123,11 +123,12 @@ export class AC3DLoader {
             const helper = helperMap.get(prefix);
 
             let pivot = new THREE.Vector3(0, 0, 0);
-            let hingeAxis = null;
+            // hingeAxis_M is expressed in the AC3D model frame (M) and is mesh-local.
+            let hingeAxis_M = null;
 
             if (helper) {
                 pivot.copy(helper.pivot);
-                hingeAxis = helper.axis;
+                hingeAxis_M = helper.axis;
             } else {
                 // Fallback pivot (center of bounding box)
                 let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -164,8 +165,8 @@ export class AC3DLoader {
             mesh.name = obj.name;
             mesh.position.copy(pivot);
             
-            if (hingeAxis) {
-                mesh.userData.hingeAxis = hingeAxis;
+            if (hingeAxis_M) {
+                mesh.userData.hingeAxis_M = hingeAxis_M;
             }
 
             group.add(mesh);
