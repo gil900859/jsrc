@@ -69,6 +69,9 @@ class App {
             dt = Math.max(0, Math.min(0.05, dt));
             
             // 1. Update UI (Visualizers and HUD)
+            // Update keyboard smoothing (no-op for gamepad)
+            this.inputSystem.update(dt);
+
             this.uiManager.update();
 
             // 2. Update Aircraft Visuals (Control surfaces/Props)

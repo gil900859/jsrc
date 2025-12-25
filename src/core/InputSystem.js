@@ -9,6 +9,15 @@ export class InputSystem {
         this.keys = {};
         this.keyboardThrottle = -1.0; // Starts at bottom
 
+        // Smoothed keyboard stick axes (aileron/elevator/rudder).
+        // These emulate a spring-centered stick with a max slew rate.
+        this.keyboardAxes = { roll: 0.0, pitch: 0.0, yaw: 0.0 };
+
+        // Time (seconds) to go from 0 -> 1 when a key is held, and 1 -> 0 when released.
+        // This defines the *relative* rate of change; feel free to tune.
+        this.keyboardSlewTimeSec = 0.25;
+
+
         // Default Config
         this.config = {
             inputSource: 'keyboard', // 'keyboard' or 'gp-0', 'gp-1', etc.
@@ -84,6 +93,36 @@ export class InputSystem {
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.config));
     }
 
+
+    // Call once per frame with dt (seconds). This only affects keyboard inputs.
+    update(dt) {
+        if (this.config.inputSource !== 'keyboard') return;
+        if (!dt || dt <= 0) return;
+
+        const slew = 1.0 / Math.max(1e-6, this.keyboardSlewTimeSec); // units: per second
+        const maxStep = slew * dt;
+
+        const targetRoll =
+            (this.keys['ArrowLeft'] ? -1 : 0) + (this.keys['ArrowRight'] ? 1 : 0);
+        const targetPitch =
+            (this.keys['ArrowUp'] ? 1 : 0) + (this.keys['ArrowDown'] ? -1 : 0);
+        const targetYaw =
+            (this.keys['BracketLeft'] ? -1 : 0) + (this.keys['BracketRight'] ? 1 : 0);
+
+        // If opposing keys are held simultaneously, neutral wins (target becomes 0).
+        const clampTarget = (v) => (v > 0 ? 1 : (v < 0 ? -1 : 0));
+
+        this.keyboardAxes.roll = this._slewTo(this.keyboardAxes.roll, clampTarget(targetRoll), maxStep);
+        this.keyboardAxes.pitch = this._slewTo(this.keyboardAxes.pitch, clampTarget(targetPitch), maxStep);
+        this.keyboardAxes.yaw = this._slewTo(this.keyboardAxes.yaw, clampTarget(targetYaw), maxStep);
+    }
+
+    _slewTo(current, target, maxStep) {
+        const delta = target - current;
+        if (Math.abs(delta) <= maxStep) return target;
+        return current + Math.sign(delta) * maxStep;
+    }
+
     getValue(actionName) {
         if (this.config.inputSource === 'keyboard') {
             return this.getKeyboardValue(actionName);
@@ -92,22 +131,13 @@ export class InputSystem {
     }
 
     getKeyboardValue(actionName) {
-        const sensitivity = 0.75;
-
         switch(actionName) {
             case 'roll':
-                if (this.keys['ArrowLeft']) return -sensitivity;
-                if (this.keys['ArrowRight']) return sensitivity;
-                return 0;
+                return this.keyboardAxes.roll;
             case 'pitch':
-                // Up arrow = Stick Forward (typically negative pitch value/nose down)
-                if (this.keys['ArrowUp']) return sensitivity;
-                if (this.keys['ArrowDown']) return -sensitivity;
-                return 0;
+                return this.keyboardAxes.pitch;
             case 'yaw':
-                if (this.keys['BracketLeft']) return -sensitivity;
-                if (this.keys['BracketRight']) return sensitivity;
-                return 0;
+                return this.keyboardAxes.yaw;
             case 'throttle':
                 return this.keyboardThrottle;
             default:
