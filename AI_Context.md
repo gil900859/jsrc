@@ -1,4 +1,4 @@
-# AI_Context_v3 — Reference Frames & Conventions (RC Flight Sim)
+# AI_Context.md — Reference Frames & Conventions (RC Flight Sim)
 
 This document is **persistent context for LLMs** working on this repo.
 
