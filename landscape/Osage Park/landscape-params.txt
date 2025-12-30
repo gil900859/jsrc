@@ -1,0 +1,37 @@
+tileResolutionX 1024.0
+tileResolutionY 1024.0
+generateTiles 0.0
+generatePanorama 0.0
+loadObjects 0.0
+loadCtlObjects 1.0
+loadSkyBox 1.0
+loadCustomSky none
+groundLevel 0.0
+textureMode 2.0
+gymX1 -100000.0
+gymX2 100000.0
+gymY1 -100000.0
+gymY2 100000.0
+gymZ1 -100000.0
+gymZ2 100000.0
+initModelPos 5.5 0.02 5.0
+initModelRot 0.0 90.0 0.0
+initSpeedVect 0.0 0.0 0.0
+initHeliPos 5.498294 0.07055527 4.9983926
+initHeliRotMat -0.54574037 1.0008482E-5 -0.83795434 4.7069875E-6 1.0 8.878394E-6 0.83795434 9.010573E-7 -0.54574037
+initHeliSpeedVect -0.0015854579 0.062175438 0.0020419336
+landscapeRot 0.0 0.0 0.0
+sunLightVect 322.0 1018.0 -430.0
+windSpeed 0.0
+windGusts 0.0
+windDirection 0.0
+thermalSpeed 0.0
+windTurbolence 0.0
+thermalTurbolence 0.0
+defaultGroundType 5.0
+loadRealSky 0.0
+landscapeType 0.0
+landscapeStyle 0.0 // 0-photoreal, 1-3d
+useTransparentColor 0.0
+transparentColorRGBA 0 0 0 0
+pilotEyeLevel 1.75 // pilot eye height in meters

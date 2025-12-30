@@ -79,7 +79,7 @@ class App {
             this.aircraft.update(this.inputSystem, dt);
 
             // 3. Render Scene
-            this.simulator.render();
+            this.simulator.render(this.aircraft.root_T.position);
         };
         loop();
     }

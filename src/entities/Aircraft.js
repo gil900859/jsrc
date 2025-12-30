@@ -64,7 +64,7 @@ export class Aircraft {
 
         // --- Body-rate limits (deg/s) ---
         this.maxRollRateDeg = 80;   // about +X_B (Forward)
-        this.maxPitchRateDeg = 50;  // about +Y_B (Right)
+        this.maxPitchRateDeg = 70;  // about +Y_B (Right)
         this.maxYawRateDeg = 30;    // about +Z_B (Down)
 
         // --- Simple throttle -> forward speed model ---
