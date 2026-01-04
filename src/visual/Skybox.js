@@ -145,7 +145,7 @@ export class Skybox {
   _makeFace({ geom, map, position_T, rotation_T }) {
     const mat = new THREE.MeshBasicMaterial({
       map,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       depthTest: false,
       depthWrite: false,
       toneMapped: false,

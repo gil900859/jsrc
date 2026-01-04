@@ -137,7 +137,12 @@ Rules:
 ### 4.1 Rigid-body state
 
 - `position_W : Vector3` — aircraft position in World ENU
+- `velocity_W : Vector3` — aircraft linear velocity in World ENU
 - `q_WB : Quaternion` — **Body → World** attitude
+- `omega_B : Vector3` — aircraft angular velocity in Body FRD
+
+Implementation note:
+- Physics state is stored as **previous/current** snapshots (`statePrev`, `stateCurr`) to support render interpolation.
 
 Initialization:
 - Aircraft starts **pointing North**
@@ -150,7 +155,7 @@ Initialization:
 Body-frame angular velocity commands:
 
 - `p` (roll rate about +Xʙ) max **80 deg/s**
-- `q` (pitch rate about +Yʙ) max **50 deg/s**
+- `q` (pitch rate about +Yʙ) max **70 deg/s**
 - `r` (yaw rate about +Zʙ) max **30 deg/s**
 
 Integration:
@@ -172,18 +177,17 @@ Throttle model (implemented):
 - Forward speed range: **0 → 20 m/s**
 
 State:
-- `forwardSpeedMps`
+- `velocity_W`
 
 Motion:
-- Forward direction = **+Xʙ**, rotated by `q_WB`
-- Integrated in **World frame**:
+- Desired velocity is along **+Xʙ** (forward), rotated by `q_WB` into World ENU.
+- The aircraft approaches the desired velocity under an acceleration limit (`maxForwardAccelMps2`).
+- Integration happens in the fixed physics step:
 
 ```
-position_W += forwardDir_W * forwardSpeedMps * dt
+velocity_W += clamp(desiredVel_W - velocity_W, maxForwardAccelMps2 * dt)
+position_W += velocity_W * dt
 ```
-
-Acceleration limiting:
-- Speed approaches target using `maxForwardAccelMps2`
 
 ---
 
@@ -199,13 +203,38 @@ These are:
 - **Commands**, not attitude
 - Expressed conceptually in **Body FRD** terms
 
+---
+
+## 6) Simulation timing & update phases (fixed-step physics)
+
+This repo uses a **fixed physics timestep** with an accumulator.
+
+Rules:
+- Physics stepping runs at `fixedDt` (e.g. 1/120 s), independent of render FPS.
+- Each render frame may run **0..N** physics substeps.
+- Rendering uses **interpolation** between the previous and current physics states.
+
+### 6.1 Update phase separation (strict)
+
+1) **Input sampling** (render-rate)
+   - Read/condition raw input devices.
+   - Produces stable command values (roll/pitch/yaw/throttle).
+
+2) **Physics stepping** (fixed-rate)
+   - Updates authoritative state only: `position_W`, `velocity_W`, `q_WB`, `omega_B`.
+   - Must not call Three.js scene graph APIs.
+
+3) **Render / animation** (render-rate)
+   - Interpolates pose (position lerp, quaternion slerp) and applies to `root_T`.
+   - Visual-only animation is allowed here (control surfaces, prop spin, etc.).
+
 Rigid-body attitude and motion come **only** from integrated rates and velocity.
 
 ---
 
-## 6) Mandatory variable naming rules (DO NOT VIOLATE)
+## 7) Mandatory variable naming rules (DO NOT VIOLATE)
 
-### 6.1 Frame suffixes
+### 7.1 Frame suffixes
 
 Every non-trivial quantity must be labeled with the frame it is expressed in:
 
@@ -221,7 +250,7 @@ Examples:
 
 ---
 
-### 6.2 Quaternion naming (direction matters)
+### 7.2 Quaternion naming (direction matters)
 
 Rule:
 - `q_AB` maps **B → A**
@@ -233,7 +262,7 @@ Examples:
 
 ---
 
-### 6.3 Allowed exceptions
+### 7.3 Allowed exceptions
 
 Only these may omit suffixes:
 - `tmpVec`, `tmpQuat` (very short scope)
@@ -243,9 +272,9 @@ Everything else: **suffix required**.
 
 ---
 
-## 7) Visual debugging aids (present in code)
+## 8) Visual debugging aids (present in code)
 
-### 7.1 Frame indicators
+### 8.1 Frame indicators
 
 - **Three.js frame**:
   - +X red, +Y green, +Z blue
@@ -265,7 +294,7 @@ These are trusted sanity checks.
 
 ---
 
-## 8) Things you should NOT do
+## 9) Things you should NOT do
 
 - ❌ Do not mix ENU and Three.js axes directly
 - ❌ Do not apply Euler angles directly to the aircraft
@@ -274,7 +303,7 @@ These are trusted sanity checks.
 
 ---
 
-## 9) Definition of done (current phase)
+## 10) Definition of done (current phase)
 
 This phase is complete because:
 
@@ -288,5 +317,5 @@ Future work (lift, drag, gravity, wind, etc.) must **respect everything above**.
 ---
 
 **If you are an LLM reading this:**
-Before adding features, re-read Sections 1–4 and follow the naming rules in Section 6.
+Before adding features, re-read Sections 1–4 and follow the naming rules in Section 7.
 

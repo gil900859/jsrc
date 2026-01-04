@@ -19,9 +19,9 @@ export class Aircraft {
         this.ac3dRoot_B.quaternion.copy(q_BM);
         this.root_T.add(this.ac3dRoot_B);
 
-        // --- Simulation state (explicit frames) ---
-        // position_W: World ENU position of aircraft reference point.
-        this.position_W = new THREE.Vector3(0, 0, 0);
+        // --- Authoritative simulation state (explicit frames) ---
+        // State lives only in World (W) and Body (B) frames.
+        // Rendering reads an interpolated pose derived from this state.
 
         // q_WB: attitude quaternion (Body -> World).
         // Default: aircraft pointing North and upright.
@@ -32,7 +32,7 @@ export class Aircraft {
         //   Right_B   (+Y) -> East_W  (+X)
         //   Down_B    (+Z) -> Down_W  (-Z)
         // This keeps the airplane "up side up" (Up_B = -Z_B aligns with Up_W = +Z).
-        this.q_WB = new THREE.Quaternion();
+        const q_WB_init = new THREE.Quaternion();
         {
             const f_W = new THREE.Vector3(0, 1, 0);   // North
             const r_W = new THREE.Vector3(1, 0, 0);   // East
@@ -41,8 +41,26 @@ export class Aircraft {
             // Columns are the images of the body basis vectors expressed in World.
             // (i.e., this is the Body->World rotation.)
             const m = new THREE.Matrix4().makeBasis(f_W, r_W, d_W);
-            this.q_WB.setFromRotationMatrix(m);
+            q_WB_init.setFromRotationMatrix(m);
         }
+
+        // Previous/current state for render interpolation.
+        this.statePrev = {
+            position_W: new THREE.Vector3(0, 0, 0),
+            velocity_W: new THREE.Vector3(0, 0, 0),
+            q_WB: q_WB_init.clone(),
+            omega_B: new THREE.Vector3(0, 0, 0),
+        };
+        this.stateCurr = {
+            position_W: new THREE.Vector3(0, 0, 0),
+            velocity_W: new THREE.Vector3(0, 0, 0),
+            q_WB: q_WB_init.clone(),
+            omega_B: new THREE.Vector3(0, 0, 0),
+        };
+
+        // Scratch outputs (hooks for force-based physics / debugging)
+        this.accel_W = new THREE.Vector3(0, 0, 0);
+        this.alpha_B = new THREE.Vector3(0, 0, 0);
         
         this.visualModel = null;
         this.fModel = null;
@@ -67,13 +85,18 @@ export class Aircraft {
         this.maxPitchRateDeg = 70;  // about +Y_B (Right)
         this.maxYawRateDeg = 30;    // about +Z_B (Down)
 
-        // --- Simple throttle -> forward speed model ---
+        // --- Simple throttle -> forward speed model (kinematic for now) ---
         // throttleCmd is expected in [-1, +1]. We remap to [0, 1] and scale.
-        // Units here are meters/second in the World ENU frame.
+        // Units are meters/second.
         this.maxForwardSpeedMps = 20;
-        this.maxForwardAccelMps2 = 8; // smoothing so speed doesn't jump instantly
-        this.forwardSpeedMps = 0;
+        this.maxForwardAccelMps2 = 8; // acceleration limit so speed doesn't jump instantly
     }
+
+    // Convenience accessors (treat as read-only outside physics stepping)
+    get position_W() { return this.stateCurr.position_W; }
+    get velocity_W() { return this.stateCurr.velocity_W; }
+    get q_WB() { return this.stateCurr.q_WB; }
+    get omega_B() { return this.stateCurr.omega_B; }
 
     setModels(visualGroup, fmodelGroup) {
         this.visualModel = visualGroup;
@@ -89,8 +112,8 @@ export class Aircraft {
 
         this.updateView();
 
-        // Apply initial pose (identity, but explicit).
-        this._applyPoseToRenderRoot();
+        // Apply initial pose (explicit).
+        this.applyRenderPose(1.0);
     }
 
     _buildCache(root) {
@@ -114,61 +137,93 @@ export class Aircraft {
         if (this.fModel) this.fModel.visible = this.showFlightModel;
     }
 
-    update(inputSystem, dt = 0) {
-        // 1) Integrate attitude from commanded body angular rates.
+    // --- PHYSICS (fixed-rate) ---
+    // Updates only authoritative state. Never touches Three.js scene graph.
+    stepPhysics(inputSystem, dt) {
+        if (!(dt > 0)) return;
+
+        // Preserve previous state for interpolation.
+        this.statePrev.position_W.copy(this.stateCurr.position_W);
+        this.statePrev.velocity_W.copy(this.stateCurr.velocity_W);
+        this.statePrev.q_WB.copy(this.stateCurr.q_WB);
+        this.statePrev.omega_B.copy(this.stateCurr.omega_B);
+
+        // --- Angular motion (kinematic body-rate commands for now) ---
         // Inputs are assumed to be in [-1, +1]. We map them linearly to body rates.
         // Body frame is FRD: +X forward (roll), +Y right (pitch), +Z down (yaw).
-        if (dt > 0) {
-            const rollCmd = inputSystem.getValue('roll');
-            const pitchCmd = inputSystem.getValue('pitch');
-            const yawCmd = inputSystem.getValue('yaw');
+        const rollCmd = inputSystem.getValue('roll');
+        const pitchCmd = inputSystem.getValue('pitch');
+        const yawCmd = inputSystem.getValue('yaw');
 
-            const deg2rad = Math.PI / 180.0;
-            const p = rollCmd * this.maxRollRateDeg * deg2rad;
-            // Sign convention: Body frame is FRD (+Z is Down). A positive rotation about +Y_B
-            // (right-hand rule) pitches the nose *down* (Forward rotates toward Down).
-            // We want stick-back (positive pitchCmd in the visualizer) to pitch the nose *up*,
-            // so we negate the pitch command when turning it into a body pitch rate.
-            const q = -pitchCmd * this.maxPitchRateDeg * deg2rad;
-            const r = yawCmd * this.maxYawRateDeg * deg2rad;
+        const deg2rad = Math.PI / 180.0;
+        const p = rollCmd * this.maxRollRateDeg * deg2rad;
+        // Sign convention: Body frame is FRD (+Z is Down). A positive rotation about +Y_B
+        // (right-hand rule) pitches the nose *down*.
+        // We want stick-back (positive pitchCmd) to pitch the nose *up*, so negate.
+        const q = -pitchCmd * this.maxPitchRateDeg * deg2rad;
+        const r = yawCmd * this.maxYawRateDeg * deg2rad;
 
-            const omega = new THREE.Vector3(p, q, r);
-            const w = omega.length();
-            if (w > 1e-8) {
-                const axis = omega.clone().multiplyScalar(1.0 / w);
-                const angle = w * dt;
+        const desiredOmega_B = new THREE.Vector3(p, q, r);
 
-                // dq represents a body-fixed incremental rotation over dt.
-                // q_WB maps Body->World, so we right-multiply by dq.
-                const dq = new THREE.Quaternion().setFromAxisAngle(axis, angle);
-                this.q_WB.multiply(dq).normalize();
-            }
+        // Hook: angular acceleration (for future torque-based physics)
+        this.alpha_B.copy(desiredOmega_B).sub(this.stateCurr.omega_B).multiplyScalar(1.0 / dt);
+        this.stateCurr.omega_B.copy(desiredOmega_B);
 
-            // 1b) Integrate position from throttle-commanded forward speed.
-            // Body frame is FRD, so forward is +X_B.
-            const throttleCmd = inputSystem.getValue('throttle');
-            const throttle01 = Math.max(0, Math.min(1, (throttleCmd + 1) * 0.5));
-            const targetSpeedMps = throttle01 * this.maxForwardSpeedMps;
-
-            // Smooth the commanded speed with an acceleration limit.
-            const maxDeltaV = this.maxForwardAccelMps2 * dt;
-            const dv = targetSpeedMps - this.forwardSpeedMps;
-            if (Math.abs(dv) <= maxDeltaV) {
-                this.forwardSpeedMps = targetSpeedMps;
-            } else {
-                this.forwardSpeedMps += Math.sign(dv) * maxDeltaV;
-            }
-
-            // Convert body-forward direction into World ENU, then integrate position.
-            const forward_B = new THREE.Vector3(1, 0, 0);
-            const forward_W = forward_B.applyQuaternion(this.q_WB).normalize();
-            this.position_W.addScaledVector(forward_W, this.forwardSpeedMps * dt);
+        // Integrate attitude from body angular velocity.
+        const omega = this.stateCurr.omega_B;
+        const w = omega.length();
+        if (w > 1e-8) {
+            const axis = omega.clone().multiplyScalar(1.0 / w);
+            const angle = w * dt;
+            // dq is a body-fixed incremental rotation over dt.
+            // q_WB maps Body->World, so right-multiply by dq.
+            const dq = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+            this.stateCurr.q_WB.multiply(dq).normalize();
         }
 
-        // 2) Apply pose to render root every frame.
-        this._applyPoseToRenderRoot();
+        // --- Translational motion (throttle -> desired forward velocity) ---
+        // This is still a simple kinematic model, but it is expressed through
+        // velocity and acceleration hooks so force-based physics can replace it.
+        const throttleCmd = inputSystem.getValue('throttle');
+        const throttle01 = Math.max(0, Math.min(1, (throttleCmd + 1) * 0.5));
+        const targetSpeedMps = throttle01 * this.maxForwardSpeedMps;
 
-        // 3) If models aren't loaded yet, we're done (axes will still show orientation).
+        // Desired velocity is along body-forward (+X_B) expressed in World ENU.
+        const forward_W = new THREE.Vector3(1, 0, 0).applyQuaternion(this.stateCurr.q_WB).normalize();
+        const desiredVel_W = forward_W.multiplyScalar(targetSpeedMps);
+
+        // Apply an acceleration limit to approach desired velocity.
+        const dv_W = desiredVel_W.clone().sub(this.stateCurr.velocity_W);
+        const maxDeltaV = this.maxForwardAccelMps2 * dt;
+        if (dv_W.length() > maxDeltaV) {
+            dv_W.setLength(maxDeltaV);
+        }
+
+        // Hook: linear acceleration (for future force-based physics)
+        this.accel_W.copy(dv_W).multiplyScalar(1.0 / dt);
+
+        // Integrate velocity then position.
+        this.stateCurr.velocity_W.add(dv_W);
+        this.stateCurr.position_W.addScaledVector(this.stateCurr.velocity_W, dt);
+    }
+
+    // --- RENDER (render-rate) ---
+    // Interpolates pose between previous and current physics states and applies it to root_T.
+    applyRenderPose(alpha = 1.0) {
+        const a = Math.max(0, Math.min(1, alpha));
+
+        const pos_W = this.statePrev.position_W.clone().lerp(this.stateCurr.position_W, a);
+        const q_WB = this.statePrev.q_WB.clone().slerp(this.stateCurr.q_WB, a);
+
+        // root_T is in Three.js coordinates. Convert position and attitude from World ENU.
+        this.root_T.position.copy(worldToThreeVec(pos_W));
+        this.root_T.quaternion.copy(worldToThreeQuat(q_WB));
+    }
+
+    // Visual-only articulation (control surfaces, prop spin, etc.).
+    // Never modifies authoritative physics state.
+    updateVisuals(inputSystem, dt = 0) {
+        // If models aren't loaded yet, we're done (axes will still show orientation).
         if (!this.visualModel || !this.fModel) return;
 
         // Determine which set of meshes to articulate
@@ -205,9 +260,11 @@ export class Aircraft {
         });
     }
 
-    _applyPoseToRenderRoot() {
-        // root_T is in Three.js coordinates. Convert position and attitude from World ENU.
-        this.root_T.position.copy(worldToThreeVec(this.position_W));
-        this.root_T.quaternion.copy(worldToThreeQuat(this.q_WB));
+    // Backward-compatible convenience for older code paths.
+    // Keeps behavior similar to the old variable-timestep update.
+    update(inputSystem, dt = 0) {
+        if (dt > 0) this.stepPhysics(inputSystem, dt);
+        this.applyRenderPose(1.0);
+        this.updateVisuals(inputSystem, dt);
     }
 }

@@ -61,7 +61,7 @@ export class Simulator {
     initEnvironment() {
         // Standard grid to provide spatial reference
         const grid = new THREE.GridHelper(100, 200, 0x444444, 0x222222);
-        this.scene.add(grid);
+        //this.scene.add(grid);
     }
 
     add(object) {

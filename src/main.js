@@ -28,7 +28,12 @@ class App {
         
         this.ac3dLoader = new AC3DLoader();
 
-        // Animation timing
+        // --- Simulation timing ---
+        // Render runs at requestAnimationFrame rate.
+        // Physics runs at a fixed timestep using an accumulator.
+        this.fixedDt = 1 / 120; // seconds
+        this.maxSubStepsPerFrame = 10; // avoid spiral-of-death on long hitches
+        this._accumulator = 0;
         this._lastT = performance.now();
 
         this.init();
@@ -62,23 +67,34 @@ class App {
         const loop = () => {
             requestAnimationFrame(loop);
 
-            // Delta time in seconds (clamped to avoid huge jumps when tab is backgrounded)
+            // Render delta time in seconds (clamped to avoid huge jumps when tab is backgrounded)
             const now = performance.now();
-            let dt = (now - this._lastT) / 1000.0;
+            let frameDt = (now - this._lastT) / 1000.0;
             this._lastT = now;
-            dt = Math.max(0, Math.min(0.05, dt));
-            
-            // 1. Update UI (Visualizers and HUD)
-            // Update keyboard smoothing (no-op for gamepad)
-            this.inputSystem.update(dt);
+            frameDt = Math.max(0, Math.min(0.05, frameDt));
 
+            // 1) Input sampling (render-rate)
+            // Update keyboard smoothing (no-op for gamepad)
+            this.inputSystem.update(frameDt);
+
+            // 2) Fixed-timestep physics stepping
+            this._accumulator += frameDt;
+            let substeps = 0;
+            while (this._accumulator >= this.fixedDt && substeps < this.maxSubStepsPerFrame) {
+                this.aircraft.stepPhysics(this.inputSystem, this.fixedDt);
+                this._accumulator -= this.fixedDt;
+                substeps++;
+            }
+
+            // 3) Render / animation (render-rate, interpolated)
+            const alpha = (this.fixedDt > 0) ? (this._accumulator / this.fixedDt) : 1;
+            this.aircraft.applyRenderPose(alpha);
+            this.aircraft.updateVisuals(this.inputSystem, frameDt);
+            
+            // 4) UI (visualizers and HUD)
             this.uiManager.update();
 
-            // 2. Update Aircraft Visuals (Control surfaces/Props)
-            // This now articulates the visible model
-            this.aircraft.update(this.inputSystem, dt);
-
-            // 3. Render Scene
+            // 5) Render Scene
             this.simulator.render(this.aircraft.root_T.position);
         };
         loop();
