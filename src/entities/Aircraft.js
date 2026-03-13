@@ -97,6 +97,12 @@ export class Aircraft {
         this.groundHeightM = 0;
     }
 
+
+    gravityAcceleration_W() {
+        // World ENU: +Z is up, so gravity is constant negative Z.
+        return new THREE.Vector3(0, 0, -this.gravityMps2);
+    }
+
     // Convenience accessors (treat as read-only outside physics stepping)
     get position_W() { return this.stateCurr.position_W; }
     get velocity_W() { return this.stateCurr.velocity_W; }
@@ -206,6 +212,7 @@ export class Aircraft {
 
         // Hook: linear acceleration includes propulsion, gravity, and simple lift.
         const accelProp_W = dv_W.multiplyScalar(1.0 / dt);
+        const gravity_W = this.gravityAcceleration_W();
         const gravity_W = new THREE.Vector3(0, 0, -this.gravityMps2);
 
         const airspeedMps = this.stateCurr.velocity_W.length();

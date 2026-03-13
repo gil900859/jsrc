@@ -17,6 +17,11 @@ export class InputSystem {
         // This defines the *relative* rate of change; feel free to tune.
         this.keyboardSlewTimeSec = 0.25;
 
+        // Touch/mobile fallback controls (used when no keyboard is detected).
+        this.mobileControlsEnabled = false;
+        this.keyboardDetected = false;
+        this.touchAxes = { roll: 0.0, pitch: 0.0, yaw: 0.0 };
+        this.touchThrottle = -1.0;
 
         // Default Config
         this.config = {
@@ -37,6 +42,7 @@ export class InputSystem {
         
         this.load();
         this.initKeyboard();
+        this.initMobileControls();
 
         window.addEventListener("gamepadconnected", (e) => {
             console.log("Gamepad connected:", e.gamepad.id);
@@ -50,6 +56,8 @@ export class InputSystem {
 
     initKeyboard() {
         window.addEventListener('keydown', (e) => {
+            this.keyboardDetected = true;
+            this.disableMobileControls();
             this.keys[e.code] = true;
             
             // Throttle 1-9 logic
@@ -64,6 +72,107 @@ export class InputSystem {
         window.addEventListener('keyup', (e) => {
             this.keys[e.code] = false;
         });
+    }
+
+
+    detectNoKeyboard() {
+        const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        const touchCapable = (navigator.maxTouchPoints || 0) > 0;
+        return coarsePointer && touchCapable && !this.keyboardDetected;
+    }
+
+    initMobileControls() {
+        if (!this.detectNoKeyboard()) return;
+
+        const root = document.createElement('div');
+        root.id = 'mobile-controls';
+        root.innerHTML = `
+            <div class="mobile-stick" data-stick="left">
+                <div class="mobile-stick-knob"></div>
+                <div class="mobile-stick-label">Yaw</div>
+            </div>
+            <div class="mobile-throttle">
+                <div class="mobile-stick-label">Throttle</div>
+                <input id="mobile-throttle-slider" type="range" min="-1" max="1" step="0.01" value="-1" orient="vertical">
+            </div>
+            <div class="mobile-stick" data-stick="right">
+                <div class="mobile-stick-knob"></div>
+                <div class="mobile-stick-label">Roll / Pitch</div>
+            </div>
+        `;
+        document.body.appendChild(root);
+
+        const throttle = root.querySelector('#mobile-throttle-slider');
+        throttle.addEventListener('input', () => {
+            this.touchThrottle = parseFloat(throttle.value);
+        });
+
+        this._bindMobileStick(root.querySelector('[data-stick="left"]'), (x, _y) => {
+            this.touchAxes.yaw = x;
+        }, () => {
+            this.touchAxes.yaw = 0;
+        });
+
+        this._bindMobileStick(root.querySelector('[data-stick="right"]'), (x, y) => {
+            this.touchAxes.roll = x;
+            this.touchAxes.pitch = y;
+        }, () => {
+            this.touchAxes.roll = 0;
+            this.touchAxes.pitch = 0;
+        });
+
+        this.mobileControlsEnabled = true;
+    }
+
+    disableMobileControls() {
+        if (!this.mobileControlsEnabled) return;
+        const root = document.getElementById('mobile-controls');
+        if (root) root.style.display = 'none';
+        this.mobileControlsEnabled = false;
+    }
+
+    _bindMobileStick(stickEl, onMove, onEnd) {
+        if (!stickEl) return;
+        const knob = stickEl.querySelector('.mobile-stick-knob');
+
+        const updateFromEvent = (e) => {
+            const rect = stickEl.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const radius = rect.width * 0.38;
+
+            let dx = (e.clientX - cx) / radius;
+            let dy = (e.clientY - cy) / radius;
+            const mag = Math.hypot(dx, dy);
+            if (mag > 1) {
+                dx /= mag;
+                dy /= mag;
+            }
+
+            knob.style.left = `${50 + dx * 38}%`;
+            knob.style.top = `${50 + dy * 38}%`;
+
+            onMove(dx, -dy);
+        };
+
+        stickEl.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            stickEl.setPointerCapture(e.pointerId);
+            updateFromEvent(e);
+        });
+
+        stickEl.addEventListener('pointermove', (e) => {
+            if (stickEl.hasPointerCapture(e.pointerId)) updateFromEvent(e);
+        });
+
+        const resetStick = () => {
+            knob.style.left = '50%';
+            knob.style.top = '50%';
+            onEnd();
+        };
+
+        stickEl.addEventListener('pointerup', resetStick);
+        stickEl.addEventListener('pointercancel', resetStick);
     }
 
     updateGpIndex() {
@@ -106,15 +215,27 @@ export class InputSystem {
             (this.keys['ArrowLeft'] ? -1 : 0) + (this.keys['ArrowRight'] ? 1 : 0);
         const targetPitch =
             (this.keys['ArrowUp'] ? 1 : 0) + (this.keys['ArrowDown'] ? -1 : 0);
-        const targetYaw =
+        let targetYaw =
             (this.keys['BracketLeft'] ? -1 : 0) + (this.keys['BracketRight'] ? 1 : 0);
+
+        if (this.mobileControlsEnabled) {
+            targetYaw = this.touchAxes.yaw;
+        }
 
         // If opposing keys are held simultaneously, neutral wins (target becomes 0).
         const clampTarget = (v) => (v > 0 ? 1 : (v < 0 ? -1 : 0));
 
-        this.keyboardAxes.roll = this._slewTo(this.keyboardAxes.roll, clampTarget(targetRoll), maxStep);
-        this.keyboardAxes.pitch = this._slewTo(this.keyboardAxes.pitch, clampTarget(targetPitch), maxStep);
-        this.keyboardAxes.yaw = this._slewTo(this.keyboardAxes.yaw, clampTarget(targetYaw), maxStep);
+        const rollTarget = this.mobileControlsEnabled ? this.touchAxes.roll : clampTarget(targetRoll);
+        const pitchTarget = this.mobileControlsEnabled ? this.touchAxes.pitch : clampTarget(targetPitch);
+        const yawTarget = this.mobileControlsEnabled ? this.touchAxes.yaw : clampTarget(targetYaw);
+
+        this.keyboardAxes.roll = this._slewTo(this.keyboardAxes.roll, rollTarget, maxStep);
+        this.keyboardAxes.pitch = this._slewTo(this.keyboardAxes.pitch, pitchTarget, maxStep);
+        this.keyboardAxes.yaw = this._slewTo(this.keyboardAxes.yaw, yawTarget, maxStep);
+
+        if (this.mobileControlsEnabled) {
+            this.keyboardThrottle = this.touchThrottle;
+        }
     }
 
     _slewTo(current, target, maxStep) {
