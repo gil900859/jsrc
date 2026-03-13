@@ -1,17 +1,11 @@
 import * as THREE from 'three';
 import { worldToThreeQuat, worldToThreeVec, q_BM } from '../math/Frames.js';
-import { createBodyFrameAxes } from '../visual/VectorIndicators.js';
 
 export class Aircraft {
     constructor() {
         // Render root in Three.js coordinates (T).
         // This node carries the aircraft pose coming from simulation state (World ENU).
         this.root_T = new THREE.Group();
-
-        // Body (aircraft) frame indicator axes.
-        // These attach to root_T (Body pose) so they are NOT affected by the Model->Body correction.
-        this.bodyAxes_B = createBodyFrameAxes({ length: 2 });
-        this.root_T.add(this.bodyAxes_B);
 
         // Model root that applies the fixed Model->Body correction once.
         // Children under this node are expected to be authored in AC3D model coordinates (M).
@@ -61,7 +55,7 @@ export class Aircraft {
         // Scratch outputs (hooks for force-based physics / debugging)
         this.accel_W = new THREE.Vector3(0, 0, 0);
         this.alpha_B = new THREE.Vector3(0, 0, 0);
-        
+
         this.visualModel = null;
         this.fModel = null;
         this.showFlightModel = false;
@@ -69,15 +63,15 @@ export class Aircraft {
         // Caches for control surfaces for both models
         this.visualCache = {};
         this.fModelCache = {};
-        
+
         // Logical mapping of inputs to model meshes
         // Multiplier for Elevator is set to -1 to ensure stick "back" = Elevator "up"
         this.surfaceConfig = [
-            { name: "LAeleron.LAeleron", input: 'roll',     scale: 0.4, multiplier: -1 }, 
-            { name: "RAeleron.RAeleron", input: 'roll',     scale: 0.4, multiplier: 1 }, 
-            { name: "Elevator.Elevator", input: 'pitch',    scale: 0.4, multiplier: -1 }, 
-            { name: "Ruder.Ruder",       input: 'yaw',      scale: 0.4, multiplier: 1 },
-            { name: "Propeller.Prop",    input: 'throttle', isProp: true } 
+            { name: 'LAeleron.LAeleron', input: 'roll', scale: 0.4, multiplier: -1 },
+            { name: 'RAeleron.RAeleron', input: 'roll', scale: 0.4, multiplier: 1 },
+            { name: 'Elevator.Elevator', input: 'pitch', scale: 0.4, multiplier: -1 },
+            { name: 'Ruder.Ruder', input: 'yaw', scale: 0.4, multiplier: 1 },
+            { name: 'Propeller.Prop', input: 'throttle', isProp: true },
         ];
 
         // --- Body-rate limits (deg/s) ---
@@ -90,6 +84,23 @@ export class Aircraft {
         // Units are meters/second.
         this.maxForwardSpeedMps = 20;
         this.maxForwardAccelMps2 = 8; // acceleration limit so speed doesn't jump instantly
+
+        // Constant gravity in World ENU (+Z is up, so gravity is negative Z).
+        this.gravityMps2 = 9.81;
+
+        // Simple lift model so forward motion can counter gravity.
+        // At trim speed, lift is approximately 1g when wings are level.
+        this.trimLiftSpeedMps = 14;
+        this.maxLiftAccelMps2 = 16;
+
+        // Flat-earth ground plane to prevent infinite falling through terrain.
+        this.groundHeightM = 0;
+    }
+
+
+    gravityAcceleration_W() {
+        // World ENU: +Z is up, so gravity is constant negative Z.
+        return new THREE.Vector3(0, 0, -this.gravityMps2);
     }
 
     // Convenience accessors (treat as read-only outside physics stepping)
@@ -199,12 +210,29 @@ export class Aircraft {
             dv_W.setLength(maxDeltaV);
         }
 
-        // Hook: linear acceleration (for future force-based physics)
-        this.accel_W.copy(dv_W).multiplyScalar(1.0 / dt);
+        // Hook: linear acceleration includes propulsion, gravity, and simple lift.
+        const accelProp_W = dv_W.multiplyScalar(1.0 / dt);
+        const gravity_W = this.gravityAcceleration_W();
+
+        const airspeedMps = this.stateCurr.velocity_W.length();
+        const liftRatio = Math.min(airspeedMps / this.trimLiftSpeedMps, 2.0);
+        const liftAccelMag = Math.min(this.gravityMps2 * liftRatio * liftRatio, this.maxLiftAccelMps2);
+
+        // Body-frame up is -Z_B in FRD. Lift acts along this up direction.
+        const up_W = new THREE.Vector3(0, 0, -1).applyQuaternion(this.stateCurr.q_WB).normalize();
+        const lift_W = up_W.multiplyScalar(liftAccelMag);
+
+        this.accel_W.copy(accelProp_W).add(gravity_W).add(lift_W);
 
         // Integrate velocity then position.
-        this.stateCurr.velocity_W.add(dv_W);
+        this.stateCurr.velocity_W.addScaledVector(this.accel_W, dt);
         this.stateCurr.position_W.addScaledVector(this.stateCurr.velocity_W, dt);
+
+        // Prevent sinking infinitely below the terrain plane.
+        if (this.stateCurr.position_W.z < this.groundHeightM) {
+            this.stateCurr.position_W.z = this.groundHeightM;
+            if (this.stateCurr.velocity_W.z < 0) this.stateCurr.velocity_W.z = 0;
+        }
     }
 
     // --- RENDER (render-rate) ---

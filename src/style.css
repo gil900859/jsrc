@@ -145,3 +145,72 @@ h3 {
 @keyframes blink { 
     50% { opacity: 0.5; } 
 }
+/* --- MOBILE CONTROLS --- */
+#mobile-controls {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 14px;
+    z-index: 15;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    pointer-events: none;
+    padding: 0 14px;
+}
+
+.mobile-stick,
+.mobile-throttle {
+    pointer-events: auto;
+}
+
+.mobile-stick {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.35);
+    background: rgba(0, 0, 0, 0.35);
+    position: relative;
+    touch-action: none;
+}
+
+.mobile-stick-knob {
+    position: absolute;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.85);
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+}
+
+.mobile-stick-label {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: #ddd;
+    white-space: nowrap;
+}
+
+.mobile-throttle {
+    height: 140px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 10px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+#mobile-throttle-slider {
+    writing-mode: bt-lr;
+    -webkit-appearance: slider-vertical;
+    width: 26px;
+    height: 100px;
+}
