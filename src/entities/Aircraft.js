@@ -1,17 +1,11 @@
 import * as THREE from 'three';
 import { worldToThreeQuat, worldToThreeVec, q_BM } from '../math/Frames.js';
-import { createBodyFrameAxes } from '../visual/VectorIndicators.js';
 
 export class Aircraft {
     constructor() {
         // Render root in Three.js coordinates (T).
         // This node carries the aircraft pose coming from simulation state (World ENU).
         this.root_T = new THREE.Group();
-
-        // Body (aircraft) frame indicator axes.
-        // These attach to root_T (Body pose) so they are NOT affected by the Model->Body correction.
-        this.bodyAxes_B = createBodyFrameAxes({ length: 2 });
-        this.root_T.add(this.bodyAxes_B);
 
         // Model root that applies the fixed Model->Body correction once.
         // Children under this node are expected to be authored in AC3D model coordinates (M).
@@ -90,6 +84,9 @@ export class Aircraft {
         // Units are meters/second.
         this.maxForwardSpeedMps = 20;
         this.maxForwardAccelMps2 = 8; // acceleration limit so speed doesn't jump instantly
+
+        // Constant gravity in World ENU (+Z is up, so gravity is negative Z).
+        this.gravityMps2 = 9.81;
     }
 
     // Convenience accessors (treat as read-only outside physics stepping)
@@ -199,11 +196,13 @@ export class Aircraft {
             dv_W.setLength(maxDeltaV);
         }
 
-        // Hook: linear acceleration (for future force-based physics)
-        this.accel_W.copy(dv_W).multiplyScalar(1.0 / dt);
+        // Hook: linear acceleration now includes gravity.
+        const accelProp_W = dv_W.multiplyScalar(1.0 / dt);
+        const gravity_W = new THREE.Vector3(0, 0, -this.gravityMps2);
+        this.accel_W.copy(accelProp_W).add(gravity_W);
 
         // Integrate velocity then position.
-        this.stateCurr.velocity_W.add(dv_W);
+        this.stateCurr.velocity_W.addScaledVector(this.accel_W, dt);
         this.stateCurr.position_W.addScaledVector(this.stateCurr.velocity_W, dt);
     }
 

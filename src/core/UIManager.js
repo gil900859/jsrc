@@ -157,11 +157,6 @@ export class UIManager {
         const yaw = this.inputSystem.getValue('yaw');
         const throttle = this.inputSystem.getValue('throttle');
 
-        document.getElementById('d-roll').innerText = roll.toFixed(2);
-        document.getElementById('d-pitch').innerText = pitch.toFixed(2);
-        document.getElementById('d-yaw').innerText = yaw.toFixed(2);
-        document.getElementById('d-thr').innerText = throttle.toFixed(2);
-
         if(this.modal.style.display !== 'none') {
             ['roll', 'pitch', 'yaw', 'throttle'].forEach(key => {
                 const el = document.getElementById(`ui-val-${key}`);
