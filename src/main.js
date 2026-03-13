@@ -3,7 +3,6 @@ import { InputSystem } from './core/InputSystem.js';
 import { UIManager } from './core/UIManager.js';
 import { AC3DLoader } from './loaders/AC3DLoader.js';
 import { Aircraft } from './entities/Aircraft.js';
-import { createThreeFrameAxes, createWorldFrameAxes } from './visual/VectorIndicators.js';
 
 class App {
     constructor() {
@@ -11,14 +10,6 @@ class App {
         this.simulator = new Simulator();
         this.inputSystem = new InputSystem();
 
-        // --- Frame indicators ---
-        // 1) Three.js (T) axes at the origin: +x red, +y green, +z blue
-        this.simulator.add(createThreeFrameAxes({ length: 5 }));
-
-        // 2) World (W / ENU) axes at the origin: North cyan, East magenta, Up yellow
-        // Thicker + shorter to differentiate from Three.js axes
-        this.simulator.add(createWorldFrameAxes({ length: 3, shaftRadius: 0.03, headRadius: 0.07 }));
-        
         // Initialize Entities
         this.aircraft = new Aircraft();
         this.simulator.add(this.aircraft.root_T);
