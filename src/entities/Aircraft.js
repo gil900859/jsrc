@@ -213,6 +213,7 @@ export class Aircraft {
         // Hook: linear acceleration includes propulsion, gravity, and simple lift.
         const accelProp_W = dv_W.multiplyScalar(1.0 / dt);
         const gravity_W = this.gravityAcceleration_W();
+        const gravity_W = new THREE.Vector3(0, 0, -this.gravityMps2);
 
         const airspeedMps = this.stateCurr.velocity_W.length();
         const liftRatio = Math.min(airspeedMps / this.trimLiftSpeedMps, 2.0);
